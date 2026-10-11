@@ -1,0 +1,19 @@
+# dependencies / build output
+node_modules/
+dist/
+lib/
+*.tgz
+
+# secrets — never commit a real key
+.env
+.env.*
+*.key
+key.txt
+
+# logs & editor/OS noise
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
