@@ -107,6 +107,21 @@ If you prefer not to use `dsh plugin add`, add this to your profile's `cordis.pa
         failOnStartupError: false
 ```
 
+## Related work / 相关工作
+
+Prior art worth knowing about: **[@pymodel/dsh-tavily](https://www.npmjs.com/package/@pymodel/dsh-tavily)**
+(from [`PyModel/dsh-research-plugins`](https://github.com/PyModel/dsh-research-plugins)) covers the same
+ground with more machinery — a settings card, the key kept on the credentials plane (never in a settings
+file), a toggle between DeepSeek's built-in search and Tavily, and keyless search/extract plus crawl/map
+out of the box. It ships through npm, so installing it needs neither git nor a pnpm build-script allowance.
+
+This bundle deliberately sits at the other end of the spectrum: **five files, ~8 KB, zero code, zero
+dependencies, no install-time scripts** — small enough to read end to end in a few minutes, which makes it
+a usable reference for what a dsh plugin bundle actually is.
+
+Both approaches register the same `mcp__tavily__*` tool family, so pick one: **do not install both**, the
+duplicate `serverName: tavily` registration is rejected.
+
 ## License / 许可
 
 MIT — see [LICENSE](./LICENSE).
