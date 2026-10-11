@@ -1,0 +1,29 @@
+# Tavily web search for DeepSeek Harness (dsh).
+#
+# This bundle inserts one MCP client instance (serverName = "tavily") that talks
+# to Tavily's hosted MCP server over Streamable HTTP. Once dsh starts, these
+# model tools become available:
+#     mcp__tavily__tavily-search     mcp__tavily__tavily-extract
+#     mcp__tavily__tavily-map        mcp__tavily__tavily-crawl
+#     mcp__tavily__tavily-research
+#
+# The API key is read from the TAVILY_API_KEY environment variable at boot, so
+# no secret is stored in this repository. Get a free key (1000 credits/month,
+# no credit card) at https://app.tavily.com, then:
+#     Windows:       setx TAVILY_API_KEY "tvly-..."     (then restart dsh)
+#     macOS/Linux:   export TAVILY_API_KEY=tvly-...
+#
+# No key? Tavily also serves a free, rate-limited "keyless" mode. In that case
+# replace the "headers" block below with:
+#     headers:
+#       X-Tavily-Access-Mode: keyless
+- insert:
+    - id: mcp-tavily
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: tavily
+        transport: streamable-http
+        url: https://mcp.tavily.com/mcp/
+        headers:
+          Authorization: !!js '`Bearer ${process.env.TAVILY_API_KEY}`'
+        failOnStartupError: false
