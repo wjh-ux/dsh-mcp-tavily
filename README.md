@@ -48,23 +48,29 @@ Restart `dsh` once — bundles and their patches are resolved at boot.
 
 ## Visual configuration / 可视化配置
 
-On dsh 0.1.7+ this plugin's settings form is generated from the schema the package
-exports, so the API key can be typed straight into the UI - no environment
-variable required:
+The API key is typed straight into the UI - no environment variable needed:
 
-**Plugins -> `dsh-mcp-tavily`**
+**Plugins -> `dsh-mcp-tavily`**: the card sits on the bundle page between its
+description and its rows. The same form is also reachable from the row's
+**Configure** control.
 
-| Field | Meaning |
+| Control | Meaning |
 |---|---|
-| **API Key** | A Tavily key (`tvly-...`). Kept on the credentials plane as a secret rather than in the settings file. Leave it empty to fall back to the reference below. |
-| `apiKeyEnv` | Credential reference consulted when the field above is empty (default `TAVILY_API_KEY`: the credentials service first, then the process environment). |
-| `maxResults` | Results per search, 1-20 (default 5). |
-| `searchDepth` | `basic` / `advanced` / `fast`. |
-| `timeoutMs` | Per-search timeout in ms (default 30000). |
+| **API Key** | A Tavily key (`tvly-...`), written to the credentials plane (`TAVILY_API_KEY`) as a secret - never to the settings file. |
+| **Show / Hide** | Reveal the draft before saving. |
+| **Save / Clear key** | Store or remove the credential. The host half resolves the key on every search, so saving takes effect immediately - no restart. |
 
-Get a free key at <https://app.tavily.com> (1,000 credits/month, no credit card).
-With nothing configured at all, Tavily still answers through its free
-rate-limited **keyless** mode.
+With no key stored, lookups fall back to the `apiKeyEnv` reference (default
+`TAVILY_API_KEY`: the credentials service first, then the process environment),
+and with neither, to Tavily's free rate-limited **keyless** mode. Get a free key
+at <https://app.tavily.com> (1,000 credits/month, no credit card).
+
+The card is rendered by this package's client module, which registers the
+`plugins.bundle.config` and `plugins.row.config` slots. That module must keep its
+`window.__ModuleLoader__.load({ id: "dsh-mcp-tavily", factory })` wrapper: dsh's
+browser half is a lazy-CJS module table, and a bare top-level `return
+module.exports` outside the wrapper fails the web boot with
+"web boot: 1 entry did not activate".
 ## Configure the key / 配置 API Key
 
 The key is read from the **`TAVILY_API_KEY` environment variable** at boot; nothing is hardcoded here.
