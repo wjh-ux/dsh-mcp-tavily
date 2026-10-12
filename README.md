@@ -35,11 +35,11 @@ Plus MCP resource reading (`list_mcp_resources` / `read_mcp_resource`) when the 
 ## Install / 安装
 
 ```sh
-# from GitHub
-dsh plugin add git+https://github.com/wjh-ux/dsh-mcp-tavily --profile <your-profile>
+# from GitHub (recommended)
+dsh plugin --profile web add github:wjh-ux/dsh-mcp-tavily
 
 # or from a local checkout
-dsh plugin add link:/absolute/path/to/dsh-mcp-tavily --profile <your-profile>
+dsh plugin --profile web add link:/absolute/path/to/dsh-mcp-tavily
 ```
 
 Restart `dsh` once — bundles and their patches are resolved at boot.
