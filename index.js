@@ -257,13 +257,117 @@ class TavilySearchProvider {
   }
 }
 
+/**
+ * Import a harness-shipped plugin module (`@deepseek-ai/*`).
+ *
+ * A plain dynamic import cannot do it for a `link:`-installed plugin: Node
+ * resolves relative to this package's own directory, and a linked install has no
+ * such dependency on disk (only `@deepseek-ai/schemastery` is vendored here).
+ * The Cordis loader can, because it resolves against the harness's own module
+ * root, which is exactly how a patch-inserted row finds its package by name.
+ */
+async function importHarnessPlugin(ctx, name) {
+  const loader = ctx?.loader;
+  if (loader?.internal && typeof loader.internal.import === "function") {
+    const base = loader.baseUrl ?? ctx.baseUrl;
+    if (base) return loader.internal.import(name, base, {});
+  }
+  return import(name);
+}
+
+/** Where Tavily's hosted MCP server lives. */
+const MCP_URL = "https://mcp.tavily.com/mcp/";
+/** Namespace its tools appear under: mcp__<serverName>__<tool>. */
+const MCP_SERVER_NAME = "tavily";
+/** Search is a remote round trip; give it room. */
+const MCP_TOOL_TIMEOUT_MS = 60_000;
+
 export function apply(ctx, config = {}) {
+  const apiKeyEnv = config.apiKeyEnv || DEFAULT_KEY_ENV;
+
   ctx.web.registerSearchProvider(new TavilySearchProvider(() => ({
     ctx,
     apiKey: config.apiKey,
-    apiKeyEnv: config.apiKeyEnv || DEFAULT_KEY_ENV,
+    apiKeyEnv,
     maxResults: config.maxResults || 5,
     searchDepth: config.searchDepth || "basic",
     timeoutMs: config.timeoutMs || DEFAULT_TIMEOUT_MS,
   })));
+
+  /**
+   * The MCP bridge is mounted from here rather than from cordis.patch.yml, so
+   * that its credential comes from the same resolution order as the search
+   * provider: credentials plane first, then the launch environment, then
+   * keyless. (The patch could only read `process.env` at load time, which made
+   * the environment variable the sole source and left the settings card unable
+   * to own the key - credentials-local refuses to store a name the environment
+   * already supplies.)
+   *
+   * Consequence: a key saved while the plugin is running reaches the built-in
+   * `web_search` immediately (it resolves per request) but only reaches these
+   * MCP tools after a restart, because the MCP client fixes its headers when it
+   * is mounted.
+   */
+  let bridgeStarted = false;
+  let bridgeFork;
+  let bridgeDisposed = false;
+
+  const mountBridge = (scope, why) => {
+    if (bridgeStarted || bridgeDisposed) return;
+    bridgeStarted = true;
+    void (async () => {
+      try {
+        // The credentials provider may mount after this plugin does; resolving
+        // too early would silently fall back to keyless.
+        const hasCredentials = Boolean(scope.get("credentials"));
+        const apiKey = await resolveKey(scope, apiKeyEnv, config.apiKey);
+        const mcpClient = await importHarnessPlugin(scope, "@deepseek-ai/dsh-mcp-client");
+        if (bridgeDisposed) return;
+        bridgeFork = scope.plugin(mcpClient, {
+          serverName: MCP_SERVER_NAME,
+          transport: "streamable-http",
+          url: MCP_URL,
+          headers: apiKey
+            ? { Authorization: `Bearer ${apiKey}` }
+            : { "X-Tavily-Access-Mode": "keyless" },
+          toolCallTimeoutMs: MCP_TOOL_TIMEOUT_MS,
+          failOnStartupError: false,
+        });
+        console.info(`[dsh-mcp-tavily] MCP bridge mounted (${apiKey ? "keyed" : "keyless"}; ${why}; credentials service ${hasCredentials ? "present" : "absent"})`);
+      } catch (error) {
+        // Keyless or an unresolvable dependency must not break the provider.
+        console.error("[dsh-mcp-tavily] MCP bridge failed to mount:", error);
+        try {
+          const loader = scope.loader;
+          console.error("[dsh-mcp-tavily] loader probe:", JSON.stringify({
+            hasLoader: Boolean(loader),
+            baseUrl: loader?.baseUrl ?? scope.baseUrl ?? null,
+            hasInternal: Boolean(loader?.internal),
+            internalImport: typeof loader?.internal?.import,
+          }));
+        } catch (probeError) {
+          console.error("[dsh-mcp-tavily] loader probe failed:", probeError);
+        }
+      }
+    })();
+  };
+
+  if (ctx.get("credentials")) {
+    mountBridge(ctx, "credentials already mounted");
+  } else {
+    ctx.inject(["credentials"], (child) => mountBridge(child, "after credentials injection"));
+  }
+
+  // A composition with no credential provider at all must still get the tools.
+  const bridgeFallback = setTimeout(() => mountBridge(ctx, "no credential provider"), 4000);
+
+  ctx.effect(() => () => {
+    bridgeDisposed = true;
+    clearTimeout(bridgeFallback);
+    try {
+      bridgeFork?.dispose?.();
+    } catch {
+      // nothing useful to do while unmounting
+    }
+  }, "dsh-mcp-tavily: MCP bridge");
 }
