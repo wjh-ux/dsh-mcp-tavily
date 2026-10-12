@@ -46,6 +46,25 @@ Restart `dsh` once — bundles and their patches are resolved at boot.
 
 重启一次 `dsh`（bundle 和补丁是启动时解析的）。
 
+## Visual configuration / 可视化配置
+
+On dsh 0.1.7+ this plugin's settings form is generated from the schema the package
+exports, so the API key can be typed straight into the UI - no environment
+variable required:
+
+**Plugins -> `dsh-mcp-tavily`**
+
+| Field | Meaning |
+|---|---|
+| **API Key** | A Tavily key (`tvly-...`). Kept on the credentials plane as a secret rather than in the settings file. Leave it empty to fall back to the reference below. |
+| `apiKeyEnv` | Credential reference consulted when the field above is empty (default `TAVILY_API_KEY`: the credentials service first, then the process environment). |
+| `maxResults` | Results per search, 1-20 (default 5). |
+| `searchDepth` | `basic` / `advanced` / `fast`. |
+| `timeoutMs` | Per-search timeout in ms (default 30000). |
+
+Get a free key at <https://app.tavily.com> (1,000 credits/month, no credit card).
+With nothing configured at all, Tavily still answers through its free
+rate-limited **keyless** mode.
 ## Configure the key / 配置 API Key
 
 The key is read from the **`TAVILY_API_KEY` environment variable** at boot; nothing is hardcoded here.
@@ -107,6 +126,13 @@ If you prefer not to use `dsh plugin add`, add this to your profile's `cordis.pa
         failOnStartupError: false
 ```
 
+### No static `@deepseek-ai/*` imports
+
+Everything optional is pulled in through a guarded dynamic import. A static import
+that fails to resolve would take the whole plugin - and with it the search seam -
+down, which is exactly what a `link:` install triggers when its dependencies are
+not linked. `@deepseek-ai/schemastery` is used only to shape the settings form: if
+it is missing the provider still works and simply exposes no form.
 ## Related work / 相关工作
 
 Prior art worth knowing about: **[@pymodel/dsh-tavily](https://www.npmjs.com/package/@pymodel/dsh-tavily)**
