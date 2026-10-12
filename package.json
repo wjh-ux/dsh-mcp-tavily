@@ -1,9 +1,9 @@
 {
   "name": "dsh-mcp-tavily",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "private": false,
   "type": "module",
-  "description": "Tavily web search for DeepSeek Harness (dsh): a Tavily search provider with a visual API-key setting, plus a bridge to Tavily's hosted remote MCP server",
+  "description": "Tavily web search for DeepSeek Harness (dsh): a Tavily search provider with a visual API-key card, plus a bridge to Tavily's hosted remote MCP server",
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",
@@ -25,10 +25,12 @@
   "main": "index.js",
   "exports": {
     ".": "./index.js",
+    "./client": "./client.js",
     "./package.json": "./package.json"
   },
   "files": [
     "index.js",
+    "client.js",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"
@@ -36,6 +38,18 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-store",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
     }
   },
   "dependencies": {
