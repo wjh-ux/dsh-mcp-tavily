@@ -1,22 +1,32 @@
-# Tavily web search for DeepSeek Harness (dsh).
+# dsh-mcp-tavily - composition patch.
 #
-# This bundle inserts one MCP client instance (serverName = "tavily") that talks
-# to Tavily's hosted MCP server over Streamable HTTP. Once dsh starts, these
-# model tools become available:
-#     mcp__tavily__tavily-search     mcp__tavily__tavily-extract
-#     mcp__tavily__tavily-map        mcp__tavily__tavily-crawl
-#     mcp__tavily__tavily-research
+# Two independent halves:
 #
-# The API key is read from the TAVILY_API_KEY environment variable at boot, so
-# no secret is stored in this repository. Get a free key (1000 credits/month,
-# no credit card) at https://app.tavily.com, then:
-#     Windows:       setx TAVILY_API_KEY "tvly-..."     (then restart dsh)
-#     macOS/Linux:   export TAVILY_API_KEY=tvly-...
+# 1. `web-search-tavily` (this package's index.js) registers a Tavily search
+#    provider on the ctx.web seam. Its API key is configured **visually** on the
+#    plugin settings page (the exported Config's `apiKey` secret field) or via
+#    the TAVILY_API_KEY environment variable. The `web` override below pins the
+#    seam to that provider - without it the built-in DeepSeek search is used.
 #
-# No key? Tavily also serves a free, rate-limited "keyless" mode. In that case
-# replace the "headers" block below with:
-#     headers:
-#       X-Tavily-Access-Mode: keyless
+#    An id-targeted override replaces the entry's whole `config`, so dsh-base's
+#    `fetchProvider` must be restated; otherwise a second fetch provider makes
+#    web fetch fail as WEB_PROVIDER_AMBIGUOUS.
+#
+# 2. `mcp-tavily` bridges Tavily's hosted remote MCP server through the
+#    CLI-shipped MCP client, adding mcp__tavily__tavily-search / -extract /
+#    -map / -crawl / -research. This half reads TAVILY_API_KEY from the launch
+#    environment at load time and falls back to Tavily's free keyless mode; the
+#    key is never written into this file (and never into the URL, where it would
+#    leak into logs and proxies).
+- id: web
+  config:
+    searchProvider: tavily
+    fetchProvider: http
+
+- insert:
+    - id: web-search-tavily
+      name: dsh-mcp-tavily
+
 - insert:
     - id: mcp-tavily
       name: "@deepseek-ai/dsh-mcp-client"
@@ -24,6 +34,6 @@
         serverName: tavily
         transport: streamable-http
         url: https://mcp.tavily.com/mcp/
-        headers:
-          Authorization: !!js '`Bearer ${process.env.TAVILY_API_KEY}`'
+        headers: !!js "(process.env.TAVILY_API_KEY ? { Authorization: 'Bearer ' + process.env.TAVILY_API_KEY } : { 'X-Tavily-Access-Mode': 'keyless' })"
+        toolCallTimeoutMs: 60000
         failOnStartupError: false
