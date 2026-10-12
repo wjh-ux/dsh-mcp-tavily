@@ -1,30 +1,41 @@
 {
-  "name": "dsh-mcp-tavily",
-  "version": "1.0.0",
-  "private": false,
-  "type": "module",
-  "description": "Tavily web search for DeepSeek Harness (dsh): wires Tavily's remote MCP server into the harness as a plugin bundle",
-  "keywords": [
-    "dsh-plugin",
-    "deepseek-harness",
-    "dsh",
-    "tavily",
-    "mcp",
-    "web-search",
-    "grounding"
-  ],
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/wjh-ux/dsh-mcp-tavily.git"
-  },
-  "homepage": "https://github.com/wjh-ux/dsh-mcp-tavily#readme",
-  "bugs": {
-    "url": "https://github.com/wjh-ux/dsh-mcp-tavily/issues"
-  },
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  }
+    "name":  "dsh-mcp-tavily",
+    "version":  "1.0.0",
+    "private":  false,
+    "type":  "module",
+    "description":  "Tavily web search for DeepSeek Harness (dsh): wires Tavily\u0027s remote MCP server into the harness as a plugin bundle",
+    "keywords":  [
+                     "dsh-plugin",
+                     "deepseek-harness",
+                     "dsh",
+                     "tavily",
+                     "mcp",
+                     "web-search",
+                     "grounding"
+                 ],
+    "license":  "MIT",
+    "repository":  {
+                       "type":  "git",
+                       "url":  "git+https://github.com/wjh-ux/dsh-mcp-tavily.git"
+                   },
+    "homepage":  "https://github.com/wjh-ux/dsh-mcp-tavily#readme",
+    "bugs":  {
+                 "url":  "https://github.com/wjh-ux/dsh-mcp-tavily/issues"
+             },
+    "dsh":  {
+                "bundle":  {
+                               "patch":  "./cordis.patch.yml"
+                           }
+            },
+    "main":  "index.js",
+    "exports":  {
+                    ".":  "./index.js",
+                    "./package.json":  "./package.json"
+                },
+    "files":  [
+                  "index.js",
+                  "cordis.patch.yml",
+                  "README.md",
+                  "LICENSE"
+              ]
 }
