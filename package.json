@@ -1,41 +1,50 @@
 {
-    "name":  "dsh-mcp-tavily",
-    "version":  "1.0.0",
-    "private":  false,
-    "type":  "module",
-    "description":  "Tavily web search for DeepSeek Harness (dsh): wires Tavily\u0027s remote MCP server into the harness as a plugin bundle",
-    "keywords":  [
-                     "dsh-plugin",
-                     "deepseek-harness",
-                     "dsh",
-                     "tavily",
-                     "mcp",
-                     "web-search",
-                     "grounding"
-                 ],
-    "license":  "MIT",
-    "repository":  {
-                       "type":  "git",
-                       "url":  "git+https://github.com/wjh-ux/dsh-mcp-tavily.git"
-                   },
-    "homepage":  "https://github.com/wjh-ux/dsh-mcp-tavily#readme",
-    "bugs":  {
-                 "url":  "https://github.com/wjh-ux/dsh-mcp-tavily/issues"
-             },
-    "dsh":  {
-                "bundle":  {
-                               "patch":  "./cordis.patch.yml"
-                           }
-            },
-    "main":  "index.js",
-    "exports":  {
-                    ".":  "./index.js",
-                    "./package.json":  "./package.json"
-                },
-    "files":  [
-                  "index.js",
-                  "cordis.patch.yml",
-                  "README.md",
-                  "LICENSE"
-              ]
+  "name": "dsh-mcp-tavily",
+  "version": "1.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Tavily web search for DeepSeek Harness (dsh): a Tavily search provider with a visual API-key setting, plus a bridge to Tavily's hosted remote MCP server",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "tavily",
+    "mcp",
+    "web-search",
+    "grounding"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wjh-ux/dsh-mcp-tavily.git"
+  },
+  "homepage": "https://github.com/wjh-ux/dsh-mcp-tavily#readme",
+  "bugs": {
+    "url": "https://github.com/wjh-ux/dsh-mcp-tavily/issues"
+  },
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-credentials": ">=0.1.5-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-launch-environment": ">=0.1.5-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-web": ">=0.1.5-rc.2 <0.3.0-0"
+  }
 }
