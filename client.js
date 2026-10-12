@@ -71,30 +71,33 @@ window.__ModuleLoader__.load({
       return result && typeof result === "object" ? result.ok !== false : true;
     }
 
-    /** Pull "is a value stored for this ref?" out of the describe() response. */
-    function configuredFrom(response, ref) {
-      if (!response) return false;
-      const rows = Array.isArray(response) ? response
-        : Array.isArray(response.refs) ? response.refs
-        : Array.isArray(response.records) ? response.records
-        : null;
-      if (rows) {
-        for (const row of rows) {
-          const name = row?.ref ?? row?.reference ?? row?.name ?? row?.id;
-          if (name !== ref) continue;
-          return Boolean(row.configured ?? row.present ?? row.set ?? row.hasValue ?? row.exists ?? row.value);
-        }
-        return false;
-      }
-      if (typeof response === "object") {
-        const direct = response[ref];
-        if (direct === undefined) return false;
-        if (typeof direct === "object" && direct !== null) {
-          return Boolean(direct.configured ?? direct.present ?? direct.set ?? direct.value);
-        }
-        return Boolean(direct);
-      }
-      return false;
+    /**
+     * Read what the credentials store reports about one reference.
+     *
+     * Two envelopes sit between the caller and the answer:
+     *   1. a remote-call result, `{ ok: true, value }` or `{ ok: false, error }`;
+     *   2. a map keyed by reference, `{ TAVILY_API_KEY: { configured, source?, writable } }`.
+     * `describe` is value-free, so `source === "env"` is how the card can tell
+     * that the launch environment supplies the key - which is also the case in
+     * which `set` rejects, because a read-only source would shadow the stored
+     * value.
+     */
+    function readState(response, ref) {
+      const empty = { configured: false, source: undefined, writable: true };
+      if (!response) return empty;
+      const payload = typeof response === "object" && "ok" in response ? response.value : response;
+      if (!payload || (typeof response === "object" && response.ok === false)) return empty;
+
+      const row = Array.isArray(payload)
+        ? payload.find((item) => (item?.ref ?? item?.reference ?? item?.name ?? item?.id) === ref)
+        : (payload[ref] ?? payload.refs?.[ref] ?? payload.entries?.[ref] ?? payload.values?.[ref]);
+      if (row === undefined || row === null) return empty;
+      if (typeof row === "boolean") return { configured: row, source: undefined, writable: !row };
+      return {
+        configured: Boolean(row.configured ?? row.present ?? row.set ?? row.hasValue ?? row.exists ?? row.value),
+        source: typeof row.source === "string" ? row.source : undefined,
+        writable: row.writable === undefined ? true : Boolean(row.writable),
+      };
     }
 
     /**
@@ -110,14 +113,29 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       const credentials = ctx.remote.credentials;
 
+      /** Cards mounted right now, so a credential change can refresh them. */
+      const listeners = new Set();
+
       // Everything below is wrapped: a bug in the card must never be able to take
       // the web UI down (that is exactly how a bad client module bricks the app).
       try {
       ctx.effect(() => injectCss(), "dsh-mcp-tavily css");
+      ctx.effect(() => {
+        const unsubscribe = ctx.remote.$on?.("credentials/reference-updated", () => {
+          for (const listener of listeners) {
+            try {
+              listener();
+            } catch {
+              // one broken card must not stop the others
+            }
+          }
+        });
+        return typeof unsubscribe === "function" ? unsubscribe : undefined;
+      }, "dsh-mcp-tavily credentials events");
       ctx.effect(() => ctx.locale.register(LOCALE_NS, {
         en: {
           configured: "Tavily API key configured",
-          keyless: "No key stored - searches run in Tavily's free keyless mode",
+          keyless: "No key on the credentials plane - falls back to the launch environment's TAVILY_API_KEY, then to Tavily's free keyless mode",
           placeholderKeep: "Leave blank to keep the current key",
           placeholderEmpty: "tvly-... (optional; blank = keyless)",
           show: "Show",
@@ -128,11 +146,13 @@ window.__ModuleLoader__.load({
           saved: "Saved. Takes effect immediately - no restart needed.",
           cleared: "Key removed. Searches fall back to keyless.",
           failed: "Save failed",
+          fromEnv: "Supplied by the launch environment's TAVILY_API_KEY (read-only here)",
+          envReadOnly: "The launch environment already supplies TAVILY_API_KEY, so the credentials store refuses to shadow it. Remove that environment variable first if you want this card to own the key.",
           hint: "Stored on the credentials plane, not in the settings file.",
         },
         zh: {
           configured: "已配置 Tavily API Key",
-          keyless: "未存 Key —— 走 Tavily 免费 keyless 模式",
+          keyless: "凭证平面未存 Key —— 回落到启动环境的 TAVILY_API_KEY，都没有时走 Tavily 免费 keyless 模式",
           placeholderKeep: "留空则保留当前 Key",
           placeholderEmpty: "tvly-...（可留空，留空即 keyless）",
           show: "显示",
@@ -143,6 +163,8 @@ window.__ModuleLoader__.load({
           saved: "已保存，立即生效（无需重启）",
           cleared: "已清除，搜索回落到 keyless",
           failed: "保存失败",
+          fromEnv: "由启动环境变量 TAVILY_API_KEY 提供（此处只读）",
+          envReadOnly: "启动环境已提供 TAVILY_API_KEY，凭证库拒绝存储会被它盖掉的值。要让这张卡片接管，请先删除该环境变量再保存。",
           hint: "存在凭证平面，不写入设置文件。",
         },
       }), "dsh-mcp-tavily locale");
@@ -151,6 +173,8 @@ window.__ModuleLoader__.load({
         const [value, setValue] = react.useState("");
         const [show, setShow] = react.useState(false);
         const [configured, setConfigured] = react.useState(false);
+        const [source, setSource] = react.useState(undefined);
+        const [writable, setWritable] = react.useState(true);
         const [busy, setBusy] = react.useState(false);
         const [message, setMessage] = react.useState("");
         const [failed, setFailed] = react.useState(false);
@@ -168,16 +192,44 @@ window.__ModuleLoader__.load({
           }
         };
 
+        /**
+         * Turn a failed credential write into copy that names the real cause.
+         * credentials-local refuses to store a name the launching environment
+         * already supplies, and that refusal is the one failure a user can fix.
+         */
+        const failureText = (failure) => {
+          const text = failure?.error ? String(failure.error) : failure ? String(failure) : "";
+          if (/read-?only|launching environment|shadow/i.test(text)) {
+            return t("envReadOnly", "The launch environment already supplies TAVILY_API_KEY, so the credentials store refuses to shadow it. Remove that environment variable first if you want this card to own the key.");
+          }
+          return text || t("failed", "Save failed");
+        };
+
         const refresh = react.useCallback(async () => {
           try {
-            const response = await credentials.describe([KEY_REF]);
-            setConfigured(configuredFrom(response, KEY_REF));
+            let response;
+            try {
+              response = await credentials.describe([KEY_REF]);
+            } catch {
+              // Some builds accept one reference at a time.
+              response = await credentials.describe(KEY_REF);
+            }
+            const info = readState(response, KEY_REF);
+            setConfigured(info.configured);
+            setSource(info.source);
+            setWritable(info.writable);
           } catch {
             // A describe failure must not break the card; Save/Clear still work.
           }
         }, []);
 
         react.useEffect(() => { refresh(); }, [refresh]);
+
+        // Keep the card honest when the credential changes elsewhere.
+        react.useEffect(() => {
+          listeners.add(refresh);
+          return () => { listeners.delete(refresh); };
+        }, [refresh]);
 
         async function save() {
           const trimmed = value.trim();
@@ -188,7 +240,7 @@ window.__ModuleLoader__.load({
             const result = await credentials.set(KEY_REF, trimmed);
             if (!written(result)) {
               setFailed(true);
-              setMessage(result?.error ? String(result.error) : t("failed", "Save failed"));
+              setMessage(failureText(result));
             } else {
               setValue("");
               setConfigured(true);
@@ -196,7 +248,7 @@ window.__ModuleLoader__.load({
             }
           } catch (error) {
             setFailed(true);
-            setMessage(String(error));
+            setMessage(failureText(error));
           } finally {
             setBusy(false);
           }
@@ -209,7 +261,7 @@ window.__ModuleLoader__.load({
             const result = await credentials.unset(KEY_REF);
             if (!written(result)) {
               setFailed(true);
-              setMessage(result?.error ? String(result.error) : t("failed", "Save failed"));
+              setMessage(failureText(result));
             } else {
               setConfigured(false);
               setValue("");
@@ -217,15 +269,17 @@ window.__ModuleLoader__.load({
             }
           } catch (error) {
             setFailed(true);
-            setMessage(String(error));
+            setMessage(failureText(error));
           } finally {
             setBusy(false);
           }
         }
 
         const status = configured
-          ? t("configured", "Tavily API key configured")
-          : t("keyless", "No key stored - searches run in Tavily's free keyless mode");
+          ? (source === "env"
+              ? t("fromEnv", "Supplied by the launch environment's TAVILY_API_KEY (read-only here)")
+              : t("configured", "Tavily API key configured"))
+          : t("keyless", "No key on the credentials plane - falls back to the launch environment's TAVILY_API_KEY, then to Tavily's free keyless mode");
 
         // The Plugins page asks every config slot for a one-liner under the title.
         if (props?.view === "summary") return h("span", null, status);
@@ -250,10 +304,13 @@ window.__ModuleLoader__.load({
             h("button", { key: "show", type: "button", className: "dshTavilyBtn", onClick: () => setShow(!show) }, show ? t("hide", "Hide") : t("show", "Show")),
           ]),
           h("div", { key: "actions", className: "dshTavilyRow" }, [
-            h("button", { key: "save", type: "button", className: "dshTavilyBtn dshTavilyPrimary", disabled: busy || value.trim().length === 0, onClick: save }, busy ? t("saving", "Saving...") : t("save", "Save")),
-            h("button", { key: "clear", type: "button", className: "dshTavilyBtn", disabled: busy || !configured, onClick: clear }, t("clear", "Clear key")),
+            h("button", { key: "save", type: "button", className: "dshTavilyBtn dshTavilyPrimary", disabled: busy || !writable || value.trim().length === 0, onClick: save }, busy ? t("saving", "Saving...") : t("save", "Save")),
+            h("button", { key: "clear", type: "button", className: "dshTavilyBtn", disabled: busy || !writable || !configured, onClick: clear }, t("clear", "Clear key")),
           ]),
           message ? h("p", { key: "msg", className: failed ? "dshTavilyMsg dshTavilyErr" : "dshTavilyMsg" }, message) : null,
+          source === "env"
+            ? h("p", { key: "envhint", className: "dshTavilyHint" }, t("envReadOnly", "The launch environment already supplies TAVILY_API_KEY, so the credentials store refuses to shadow it. Remove that environment variable first if you want this card to own the key."))
+            : null,
           h("p", { key: "hint", className: "dshTavilyHint" }, t("hint", "Stored on the credentials plane, not in the settings file.")),
         ]);
       }
